@@ -151,9 +151,17 @@ For unstable Wi-Fi, routed networks, or slow devices, keep a safer timeout:
 Example table:
 
 ```text
-IP            CONF  SCORE  VENDOR / MODEL        HASHRATE    TEMP C            FAN RPM    PORTS      REASON
-------------  ----  -----  --------------------  ----------  ----------------  ---------  ---------  -------------------------------
-192.168.1.41  high  100    Bitmain Antminer S19  104.5 TH/s  max 72; 68,70,72  6150,6200  80,4028   CGMiner-compatible API answered
+IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C            FAN RPM    PORTS      REASON
+------------  ------  -----  -------------------------  ----------  ----------------  ---------  ---------  --------------------------------------------
+192.168.1.41  high    100    Bitmain Antminer S19       104.5 TH/s  max 72; 68,70,72  6150,6200  80,4028   CGMiner-compatible API answered
+192.168.1.42  high    100    Bitmain Antminer S21       188.2 TH/s  max 69; 64,66,69  5520,5590  80,4028   vendor fingerprint: Bitmain Antminer
+192.168.1.43  high    96     MicroBT WhatsMiner M50     118.7 TH/s  max 76; 72,76     5750,5800  80,4028   vendor fingerprint: MicroBT WhatsMiner
+192.168.1.44  high    91     Canaan Avalon A1366        129.4 TH/s  max 71; 66,69,71  5000,5100  80,4028   mining terms: hashrate, fan, pool
+192.168.1.45  high    88     Goldshell KD6              26.3 TH/s   max 64; 60,64     4320,4400  80,8080   HTTP fingerprint on 80/
+192.168.1.46  high    84     IceRiver KS3M              6.1 TH/s    max 67; 63,67     3900,4020  80,4028   CGMiner-compatible API answered
+192.168.1.47  medium  68     Braiins OS                 96.8 TH/s   max 70; 65,70     6100,6180  80,4028   vendor fingerprint: Braiins OS
+192.168.1.48  medium  61     VNish                      82.4 TH/s   max 73; 69,73     5950,6010  80,4028   authenticated miner web UI
+192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3200,3300  80,8080   HTTP fingerprint on 8080/
 ```
 
 Confidence levels:
@@ -374,9 +382,17 @@ HTTP Basic Auth для веб-интерфейсов майнеров:
 Пример таблицы:
 
 ```text
-IP            CONF  SCORE  VENDOR / MODEL        HASHRATE    TEMP C            FAN RPM    PORTS      REASON
-------------  ----  -----  --------------------  ----------  ----------------  ---------  ---------  -------------------------------
-192.168.1.41  high  100    Bitmain Antminer S19  104.5 TH/s  max 72; 68,70,72  6150,6200  80,4028   CGMiner-compatible API answered
+IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C            FAN RPM    PORTS      REASON
+------------  ------  -----  -------------------------  ----------  ----------------  ---------  ---------  --------------------------------------------
+192.168.1.41  high    100    Bitmain Antminer S19       104.5 TH/s  max 72; 68,70,72  6150,6200  80,4028   CGMiner-compatible API answered
+192.168.1.42  high    100    Bitmain Antminer S21       188.2 TH/s  max 69; 64,66,69  5520,5590  80,4028   vendor fingerprint: Bitmain Antminer
+192.168.1.43  high    96     MicroBT WhatsMiner M50     118.7 TH/s  max 76; 72,76     5750,5800  80,4028   vendor fingerprint: MicroBT WhatsMiner
+192.168.1.44  high    91     Canaan Avalon A1366        129.4 TH/s  max 71; 66,69,71  5000,5100  80,4028   mining terms: hashrate, fan, pool
+192.168.1.45  high    88     Goldshell KD6              26.3 TH/s   max 64; 60,64     4320,4400  80,8080   HTTP fingerprint on 80/
+192.168.1.46  high    84     IceRiver KS3M              6.1 TH/s    max 67; 63,67     3900,4020  80,4028   CGMiner-compatible API answered
+192.168.1.47  medium  68     Braiins OS                 96.8 TH/s   max 70; 65,70     6100,6180  80,4028   vendor fingerprint: Braiins OS
+192.168.1.48  medium  61     VNish                      82.4 TH/s   max 73; 69,73     5950,6010  80,4028   authenticated miner web UI
+192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3200,3300  80,8080   HTTP fingerprint on 8080/
 ```
 
 Уровни уверенности:
