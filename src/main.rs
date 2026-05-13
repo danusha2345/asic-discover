@@ -5,14 +5,14 @@ use std::fmt::Write as FmtWrite;
 use std::fs::{self, OpenOptions};
 use std::io::{Read, Write as IoWrite};
 use std::net::{IpAddr, Ipv4Addr, Shutdown, SocketAddr, TcpStream, UdpSocket};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "1.5.0";
+const VERSION: &str = "1.6.0";
 const MAX_TELEMETRY_VALUES: usize = 16;
 const MAX_FAN_COUNT: u32 = 16;
 const MAX_BOARD_COUNT: u32 = 16;
@@ -375,7 +375,8 @@ fn main() {
 }
 
 fn run() -> Result<i32, String> {
-    let config = parse_args()?;
+    let mut config = parse_args()?;
+    resolve_storage_paths(&mut config)?;
     let auto_mode = config.manual_networks.is_empty();
     let mut networks = if auto_mode {
         discover_local_networks()
@@ -398,6 +399,8 @@ fn run() -> Result<i32, String> {
         }
         return Ok(0);
     }
+
+    preflight_storage(&config)?;
 
     let targets = build_targets(&networks);
     if targets.is_empty() {
@@ -457,7 +460,7 @@ fn parse_args() -> Result<Config, String> {
         user: None,
         password: String::new(),
         output: PathBuf::from("reports"),
-        database: PathBuf::from("database/asic_inventory.jsonl"),
+        database: PathBuf::from("database").join("asic_inventory.jsonl"),
         no_save: false,
         no_db: false,
         quiet: false,
@@ -548,6 +551,80 @@ fn parse_args() -> Result<Config, String> {
         return Err("--interval must be positive".to_string());
     }
     Ok(config)
+}
+
+fn resolve_storage_paths(config: &mut Config) -> Result<(), String> {
+    let base_dir = executable_dir()?;
+    if !config.output.is_absolute() {
+        config.output = base_dir.join(&config.output);
+    }
+    if !config.database.is_absolute() {
+        config.database = base_dir.join(&config.database);
+    }
+    Ok(())
+}
+
+fn executable_dir() -> Result<PathBuf, String> {
+    let exe_path =
+        env::current_exe().map_err(|err| format!("failed to locate executable path: {}", err))?;
+    exe_path.parent().map(Path::to_path_buf).ok_or_else(|| {
+        format!(
+            "executable path has no parent directory: {}",
+            exe_path.display()
+        )
+    })
+}
+
+fn preflight_storage(config: &Config) -> Result<(), String> {
+    if config.no_save {
+        return Ok(());
+    }
+
+    fs::create_dir_all(&config.output)
+        .map_err(|err| format!("failed to create {}: {}", config.output.display(), err))?;
+    check_directory_writable(&config.output)?;
+
+    if !config.no_db {
+        preflight_database(&config.database)?;
+    }
+
+    Ok(())
+}
+
+fn preflight_database(path: &Path) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("failed to create {}: {}", parent.display(), err))?;
+            check_directory_writable(parent)?;
+        }
+    }
+
+    OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|err| format!("failed to create/open {}: {}", path.display(), err))?;
+
+    Ok(())
+}
+
+fn check_directory_writable(path: &Path) -> Result<(), String> {
+    let probe_path = path.join(".asic-discover-write-test");
+    OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&probe_path)
+        .map_err(|err| format!("directory is not writable {}: {}", path.display(), err))?;
+    fs::remove_file(&probe_path).map_err(|err| {
+        format!(
+            "failed to remove write-test file {}: {}",
+            probe_path.display(),
+            err
+        )
+    })?;
+    Ok(())
 }
 
 fn next_value<I>(args: &mut I, flag: &str) -> Result<String, String>
@@ -645,8 +722,8 @@ Options:
       --include-low         Show low-confidence candidates
       --user <USER>         Optional HTTP Basic Auth user
       --password <PASS>     Optional HTTP Basic Auth password
-      --output <DIR>        Report directory, default: reports
-      --database <FILE>     Append-only JSONL database, default: database/asic_inventory.jsonl
+      --output <DIR>        Report directory, default: <executable-dir>/reports
+      --database <FILE>     Append-only JSONL database, default: <executable-dir>/database/asic_inventory.jsonl
       --no-save             Do not write JSON/CSV reports
       --no-db               Do not append scan rows to the local database
       --watch               Keep running and rescan on an interval
@@ -2281,6 +2358,7 @@ fn save_database(
         }
     }
 
+    let mut known_states = load_inventory_signatures(&config.database)?;
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -2288,18 +2366,84 @@ fn save_database(
         .map_err(|err| format!("failed to open {}: {}", config.database.display(), err))?;
 
     for item in results {
-        writeln!(file, "{}", build_database_line(item, seen_epoch))
+        let line = build_database_line(item, seen_epoch);
+        let state = inventory_state_signature(&line).unwrap_or_else(|| line.clone());
+        let ip = item.ip.to_string();
+        if known_states
+            .get(&ip)
+            .map(|known_state| known_state == &state)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+
+        writeln!(file, "{}", line)
             .map_err(|err| format!("failed to write {}: {}", config.database.display(), err))?;
+        known_states.insert(ip, state);
     }
 
     let latest_path = config
         .database
         .parent()
-        .unwrap_or_else(|| std::path::Path::new("."))
+        .unwrap_or_else(|| Path::new("."))
         .join("latest_inventory.csv");
     fs::write(&latest_path, build_csv_report(results))
         .map_err(|err| format!("failed to write {}: {}", latest_path.display(), err))?;
     Ok(latest_path)
+}
+
+fn load_inventory_signatures(path: &Path) -> Result<HashMap<String, String>, String> {
+    let mut signatures = HashMap::new();
+    if !path.exists() {
+        return Ok(signatures);
+    }
+
+    let content = fs::read_to_string(path).map_err(|err| {
+        format!(
+            "failed to read existing database {}: {}",
+            path.display(),
+            err
+        )
+    })?;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let Some(ip) = json_string_field(line, "ip") else {
+            continue;
+        };
+        let Some(signature) = inventory_state_signature(line) else {
+            continue;
+        };
+        signatures.insert(ip, signature);
+    }
+    Ok(signatures)
+}
+
+fn inventory_state_signature(line: &str) -> Option<String> {
+    line.find("\"ip\":")
+        .map(|start| line[start..].trim().to_string())
+}
+
+fn json_string_field(line: &str, field: &str) -> Option<String> {
+    let needle = format!("\"{}\":\"", field);
+    let start = line.find(&needle)? + needle.len();
+    let mut out = String::new();
+    let mut escaped = false;
+    for ch in line[start..].chars() {
+        if escaped {
+            out.push(ch);
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' => escaped = true,
+            '"' => return Some(out),
+            ch => out.push(ch),
+        }
+    }
+    None
 }
 
 fn build_database_line(item: &HostResult, seen_epoch: u64) -> String {

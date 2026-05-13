@@ -6,7 +6,7 @@
 
 ASIC Discover is a cross-platform Rust utility for finding ASIC miners on local IPv4 networks.
 
-It does not change miner settings and does not brute-force passwords. The scanner checks common ASIC management ports, CGMiner/BMMiner/BOSMiner-compatible APIs, and HTTP management pages. Results are printed to the console and saved to `reports/*.json`, `reports/*.csv`, and the local inventory database `database/asic_inventory.jsonl`.
+It does not change miner settings and does not brute-force passwords. The scanner checks common ASIC management ports, CGMiner/BMMiner/BOSMiner-compatible APIs, and HTTP management pages. Results are printed to the console and saved next to the executable in `reports/*.json`, `reports/*.csv`, and the local inventory database `database/asic_inventory.jsonl`.
 
 ### Features
 
@@ -15,6 +15,7 @@ It does not change miner settings and does not brute-force passwords. The scanne
 - Reads CGMiner/BMMiner/BOSMiner API data from ports `4028` and `4029`.
 - Extracts telemetry when available: hashrate, temperatures, hashboard/chain count, fan count, and up to 16 fan RPM values.
 - Provides watch mode with a static table that redraws only when something changes.
+- Creates and checks local report/database storage before scanning.
 - Includes ready-to-run binaries for Windows and Linux x64/ARM targets.
 - Builds without external Rust crate dependencies.
 
@@ -172,7 +173,11 @@ Each scan can append discovered devices to:
 database/asic_inventory.jsonl
 ```
 
-This is an append-only JSONL database: one JSON line per discovered device per changed scan result. The latest scan table is also saved to:
+By default this path is created next to the executable file. For example, Windows `bin/asic-discover.exe` writes to `bin/database/asic_inventory.jsonl`, and a Linux `dist/x86_64-unknown-linux-musl/asic-discover` binary writes to `dist/x86_64-unknown-linux-musl/database/asic_inventory.jsonl`.
+
+Before scanning, the utility creates the database/report directories if needed and checks that they are writable. This makes permission/path errors fail immediately instead of after a long scan.
+
+This is an append-only JSONL database: one JSON line per discovered device state. If the same ASIC is found again with unchanged state, the duplicate row is not appended. The latest scan table is also saved to:
 
 ```text
 database/latest_inventory.csv
@@ -233,7 +238,7 @@ Only scan networks you own or are allowed to audit.
 
 ASIC Discover - кроссплатформенная Rust-утилита для поиска ASIC-майнеров в локальных IPv4-сетях.
 
-Сканер не меняет настройки устройств и не подбирает пароли. Он проверяет типовые порты управления ASIC, CGMiner/BMMiner/BOSMiner-совместимые API и HTTP-страницы управления. Результаты выводятся в консоль и сохраняются в `reports/*.json`, `reports/*.csv` и локальную базу `database/asic_inventory.jsonl`.
+Сканер не меняет настройки устройств и не подбирает пароли. Он проверяет типовые порты управления ASIC, CGMiner/BMMiner/BOSMiner-совместимые API и HTTP-страницы управления. Результаты выводятся в консоль и сохраняются рядом с исполняемым файлом в `reports/*.json`, `reports/*.csv` и локальную базу `database/asic_inventory.jsonl`.
 
 ### Возможности
 
@@ -242,6 +247,7 @@ ASIC Discover - кроссплатформенная Rust-утилита для 
 - Чтение CGMiner/BMMiner/BOSMiner API на портах `4028` и `4029`.
 - Извлечение телеметрии, если устройство её отдаёт: хэшрейт, температуры, количество плат/цепочек, количество вентиляторов и до 16 значений RPM вентиляторов.
 - Watch-режим со статичной таблицей, которая перерисовывается только при изменениях.
+- Создание и проверка локальной папки отчётов/базы перед сканированием.
 - Готовые бинарники для Windows и Linux x64/ARM.
 - Сборка без внешних Rust crate-зависимостей.
 
@@ -399,7 +405,11 @@ IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C      
 database/asic_inventory.jsonl
 ```
 
-Это append-only JSONL-база: одна строка JSON на одно найденное устройство за один изменившийся результат скана. Последняя таблица также сохраняется в:
+По умолчанию этот путь создаётся рядом с исполняемым файлом. Например, Windows `bin/asic-discover.exe` пишет в `bin/database/asic_inventory.jsonl`, а Linux-бинарник `dist/x86_64-unknown-linux-musl/asic-discover` пишет в `dist/x86_64-unknown-linux-musl/database/asic_inventory.jsonl`.
+
+Перед сканированием утилита создаёт папки базы/отчётов, если их нет, и проверяет возможность записи. Ошибка прав или пути будет видна сразу, а не после долгого скана.
+
+Это append-only JSONL-база: одна строка JSON на одно состояние найденного устройства. Если тот же ASIC найден повторно без изменений состояния, дубль в базу не дописывается. Последняя таблица также сохраняется в:
 
 ```text
 database/latest_inventory.csv

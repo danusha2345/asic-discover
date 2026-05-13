@@ -1,6 +1,10 @@
 /target/
 /reports/
 /database/
+/bin/reports/
+/bin/database/
+/dist/**/reports/
+/dist/**/database/
 /verify_reports*/
 /verify_database*/
 *.log
