@@ -20,8 +20,11 @@ It does not change miner settings and does not brute-force passwords. The scanne
 
 ### Quick Start On Windows
 
+Clone or download the repository, then open the project folder:
+
 ```powershell
-cd "O:\Новая папка\asic_утилита"
+git clone https://github.com/danusha2345/asic-discover.git
+cd asic-discover
 powershell -NoProfile -ExecutionPolicy Bypass -File .\run_scan.ps1
 ```
 
@@ -53,7 +56,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run_scan.ps1 -Watch -Inter
 ### Quick Start On Linux
 
 ```bash
-cd /path/to/asic_utility
+git clone https://github.com/danusha2345/asic-discover.git
+cd asic-discover
 chmod +x ./run_scan.sh
 ./run_scan.sh
 ```
@@ -220,8 +224,11 @@ ASIC Discover - кроссплатформенная Rust-утилита для 
 
 ### Быстрый Запуск На Windows
 
+Склонируйте или скачайте репозиторий, затем откройте папку проекта:
+
 ```powershell
-cd "O:\Новая папка\asic_утилита"
+git clone https://github.com/danusha2345/asic-discover.git
+cd asic-discover
 powershell -NoProfile -ExecutionPolicy Bypass -File .\run_scan.ps1
 ```
 
@@ -253,7 +260,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\run_scan.ps1 -Watch -Inter
 ### Быстрый Запуск На Linux
 
 ```bash
-cd /path/to/asic_utility
+git clone https://github.com/danusha2345/asic-discover.git
+cd asic-discover
 chmod +x ./run_scan.sh
 ./run_scan.sh
 ```
