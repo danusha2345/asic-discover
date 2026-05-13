@@ -1,0 +1,11 @@
+/target/
+/reports/
+/database/
+/verify_reports*/
+/verify_database*/
+*.log
+watch_test_output.txt
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

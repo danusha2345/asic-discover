@@ -1,0 +1,4 @@
+03cc67762b09c198e650f14afcc8fc31a29ebe842ed54b72ca26fa24a05521d4  x86_64-pc-windows-msvc/asic-discover.exe
+60c6ae943d1b4b404c3a8c7f3e43007d531de91733089813692b5395c1c4c8b2  x86_64-unknown-linux-musl/asic-discover
+2358d69e148c7ecf5cfc80c6fd390e773328719a0018f7830df86b217f3cb805  aarch64-unknown-linux-musl/asic-discover
+41f9a05b72df5ff8949561aac7d47e7971c759b801181a88b7f0e3eee2cdbba5  armv7-unknown-linux-musleabihf/asic-discover
