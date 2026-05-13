@@ -127,6 +127,25 @@ Use a custom database path:
 .\bin\asic-discover.exe --network 192.168.1.0/24 --database D:\asic_inventory.jsonl
 ```
 
+### Speed Tuning
+
+The scanner uses a two-stage pipeline:
+
+1. Fast parallel TCP probing of all selected `IP:port` pairs.
+2. Detailed API/HTTP fingerprinting only for hosts with open ports.
+
+Default concurrency is `512` worker threads. On large local networks you can make scans faster by increasing concurrency and lowering the TCP timeout:
+
+```powershell
+.\bin\asic-discover.exe --network 192.168.1.0/24 --threads 1024 --timeout 0.25
+```
+
+For unstable Wi-Fi, routed networks, or slow devices, keep a safer timeout:
+
+```powershell
+.\bin\asic-discover.exe --network 192.168.1.0/24 --threads 512 --timeout 0.55
+```
+
 ### Output
 
 Example table:
@@ -329,6 +348,25 @@ HTTP Basic Auth для веб-интерфейсов майнеров:
 
 ```powershell
 .\bin\asic-discover.exe --network 192.168.1.0/24 --database D:\asic_inventory.jsonl
+```
+
+### Настройка Скорости
+
+Сканер работает в два этапа:
+
+1. Быстрая параллельная TCP-проверка всех выбранных пар `IP:port`.
+2. Детальный API/HTTP-fingerprint только для хостов, где есть открытые порты.
+
+По умолчанию используется `512` worker threads. На больших локальных сетях можно ускорить скан, подняв конкуррентность и уменьшив TCP timeout:
+
+```powershell
+.\bin\asic-discover.exe --network 192.168.1.0/24 --threads 1024 --timeout 0.25
+```
+
+Для нестабильного Wi-Fi, маршрутизируемых сетей или медленных устройств лучше оставить более безопасный timeout:
+
+```powershell
+.\bin\asic-discover.exe --network 192.168.1.0/24 --threads 512 --timeout 0.55
 ```
 
 ### Вывод

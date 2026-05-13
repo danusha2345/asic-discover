@@ -8,7 +8,7 @@ param(
     [string]$Ports,
     [string]$Database,
     [switch]$NoDb,
-    [int]$Threads = 128
+    [int]$Threads = 512
 )
 
 $ErrorActionPreference = 'Stop'

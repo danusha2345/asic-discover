@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::env;
 use std::fmt;
 use std::fmt::Write as FmtWrite;
@@ -12,7 +12,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "1.3.0";
+const VERSION: &str = "1.4.0";
 const DEFAULT_PORTS: &[u16] = &[4028, 4029, 80, 443, 8080, 8081, 8888, 22, 23];
 const CGMINER_PORTS: &[u16] = &[4028, 4029];
 const HTTP_PORTS: &[u16] = &[80, 443, 8080, 8081, 8888];
@@ -380,7 +380,7 @@ fn parse_args() -> Result<Config, String> {
         manual_networks: Vec::new(),
         ports: DEFAULT_PORTS.to_vec(),
         timeout: Duration::from_millis(550),
-        threads: 128,
+        threads: 512,
         max_hosts: 4096,
         force: false,
         deep: false,
@@ -569,7 +569,7 @@ Options:
   -n, --network <CIDR>      Network to scan, for example 192.168.1.0/24. Can be repeated.
       --ports <LIST>        Ports and ranges, default: 4028,4029,80,443,8080,8081,8888,22,23
       --timeout <SECONDS>   TCP timeout, default: 0.55
-      --threads <N>         Worker threads, default: 128
+      --threads <N>         Worker threads for TCP probes and fingerprinting, default: 512
       --max-hosts <N>       Safety limit unless --force is used, default: 4096
       --force               Allow large ranges above --max-hosts
       --deep                Probe extra HTTP API/status paths
@@ -874,8 +874,16 @@ fn first_ipv4(text: &str) -> Option<Ipv4Addr> {
 }
 
 fn scan_all(config: &Config, targets: Vec<Ipv4Addr>) -> Vec<HostResult> {
-    let total = targets.len();
-    let queue = Arc::new(Mutex::new(VecDeque::from(targets)));
+    let open_hosts = probe_open_ports(config, &targets);
+    if open_hosts.is_empty() {
+        if !config.quiet {
+            eprintln!();
+        }
+        return Vec::new();
+    }
+
+    let total = open_hosts.len();
+    let queue = Arc::new(Mutex::new(VecDeque::from(open_hosts)));
     let config = Arc::new(config.clone());
     let completed = Arc::new(AtomicUsize::new(0));
     let print_lock = Arc::new(Mutex::new(()));
@@ -890,24 +898,24 @@ fn scan_all(config: &Config, targets: Vec<Ipv4Addr>) -> Vec<HostResult> {
         let print_lock = Arc::clone(&print_lock);
         let tx = tx.clone();
         let handle = thread::spawn(move || loop {
-            let ip = {
+            let item = {
                 let mut guard = queue.lock().expect("queue lock poisoned");
                 guard.pop_front()
             };
-            let Some(ip) = ip else {
+            let Some((ip, open_ports)) = item else {
                 break;
             };
 
-            if let Some(result) = scan_host(ip, &config) {
+            if let Some(result) = scan_host(ip, open_ports, &config) {
                 if config.include_low || result.confidence != Confidence::Low {
                     let _ = tx.send(result);
                 }
             }
 
             let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
-            if !config.quiet && (done == total || done % 25 == 0) {
+            if !config.quiet && (done == total || done % 10 == 0) {
                 let _guard = print_lock.lock().expect("print lock poisoned");
-                eprint!("\rscanned {}/{} hosts", done, total);
+                eprint!("\rfingerprinted {}/{} open hosts", done, total);
                 let _ = std::io::stderr().flush();
             }
         });
@@ -934,6 +942,74 @@ fn scan_all(config: &Config, targets: Vec<Ipv4Addr>) -> Vec<HostResult> {
             .then_with(|| u32::from(left.ip).cmp(&u32::from(right.ip)))
     });
     results
+}
+
+fn probe_open_ports(config: &Config, targets: &[Ipv4Addr]) -> Vec<(Ipv4Addr, Vec<u16>)> {
+    let mut checks = VecDeque::new();
+    for &ip in targets {
+        for &port in &config.ports {
+            checks.push_back((ip, port));
+        }
+    }
+
+    let total = checks.len();
+    if total == 0 {
+        return Vec::new();
+    }
+
+    let queue = Arc::new(Mutex::new(checks));
+    let completed = Arc::new(AtomicUsize::new(0));
+    let print_lock = Arc::new(Mutex::new(()));
+    let (tx, rx) = mpsc::channel();
+
+    let worker_count = config.threads.min(total.max(1));
+    let mut handles = Vec::new();
+    for _ in 0..worker_count {
+        let queue = Arc::clone(&queue);
+        let completed = Arc::clone(&completed);
+        let print_lock = Arc::clone(&print_lock);
+        let tx = tx.clone();
+        let timeout = config.timeout;
+        let quiet = config.quiet;
+        let handle = thread::spawn(move || loop {
+            let item = {
+                let mut guard = queue.lock().expect("probe queue lock poisoned");
+                guard.pop_front()
+            };
+            let Some((ip, port)) = item else {
+                break;
+            };
+
+            if tcp_open(ip, port, timeout) {
+                let _ = tx.send((ip, port));
+            }
+
+            let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+            if !quiet && (done == total || done % 250 == 0) {
+                let _guard = print_lock.lock().expect("probe print lock poisoned");
+                eprint!("\rprobed {}/{} TCP ports", done, total);
+                let _ = std::io::stderr().flush();
+            }
+        });
+        handles.push(handle);
+    }
+    drop(tx);
+
+    let mut by_host: HashMap<Ipv4Addr, Vec<u16>> = HashMap::new();
+    for (ip, port) in rx {
+        by_host.entry(ip).or_default().push(port);
+    }
+
+    for handle in handles {
+        let _ = handle.join();
+    }
+
+    let mut open_hosts = by_host.into_iter().collect::<Vec<_>>();
+    for (_, ports) in &mut open_hosts {
+        ports.sort_unstable();
+    }
+    open_hosts.sort_by_key(|(ip, _)| u32::from(*ip));
+    open_hosts
 }
 
 fn run_watch(
@@ -1030,13 +1106,7 @@ fn format_duration(duration: Duration) -> String {
     }
 }
 
-fn scan_host(ip: Ipv4Addr, config: &Config) -> Option<HostResult> {
-    let mut open_ports = Vec::new();
-    for &port in &config.ports {
-        if tcp_open(ip, port, config.timeout) {
-            open_ports.push(port);
-        }
-    }
+fn scan_host(ip: Ipv4Addr, open_ports: Vec<u16>, config: &Config) -> Option<HostResult> {
     if open_ports.is_empty() {
         return None;
     }
