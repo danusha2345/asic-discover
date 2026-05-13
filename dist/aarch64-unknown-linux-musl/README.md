@@ -164,12 +164,6 @@ IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C      
 192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3200,3300  80,8080   HTTP fingerprint on 8080/
 ```
 
-Confidence levels:
-
-- `high` - very likely an ASIC miner.
-- `medium` - likely an ASIC miner, but not fully identified.
-- `low` - weak match, hidden by default unless `--include-low` is used.
-
 ### Inventory Database
 
 Each scan can append discovered devices to:
@@ -394,12 +388,6 @@ IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C      
 192.168.1.48  medium  61     VNish                      82.4 TH/s   max 73; 69,73     5950,6010  80,4028   authenticated miner web UI
 192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3200,3300  80,8080   HTTP fingerprint on 8080/
 ```
-
-Уровни уверенности:
-
-- `high` - почти наверняка ASIC-майнер.
-- `medium` - очень похож на ASIC, но не полностью идентифицирован.
-- `low` - слабое совпадение, по умолчанию скрывается без `--include-low`.
 
 ### База
 
