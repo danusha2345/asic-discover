@@ -12,7 +12,10 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-const VERSION: &str = "1.4.0";
+const VERSION: &str = "1.5.0";
+const MAX_TELEMETRY_VALUES: usize = 16;
+const MAX_FAN_COUNT: u32 = 16;
+const MAX_BOARD_COUNT: u32 = 16;
 const DEFAULT_PORTS: &[u16] = &[4028, 4029, 80, 443, 8080, 8081, 8888, 22, 23];
 const CGMINER_PORTS: &[u16] = &[4028, 4029];
 const HTTP_PORTS: &[u16] = &[80, 443, 8080, 8081, 8888];
@@ -117,7 +120,54 @@ const FAN_LABELS: &[&str] = &[
     "fan4",
     "fan5",
     "fan6",
+    "fan7",
+    "fan8",
+    "fan9",
+    "fan10",
+    "fan11",
+    "fan12",
+    "fan13",
+    "fan14",
+    "fan15",
+    "fan16",
     "fan",
+];
+
+const FAN_COUNT_LABELS: &[&str] = &[
+    "fan_num",
+    "fan num",
+    "fan_count",
+    "fan count",
+    "fan_qty",
+    "fan qty",
+    "fan_number",
+    "fan number",
+    "fans",
+];
+
+const BOARD_COUNT_LABELS: &[&str] = &[
+    "chain_num",
+    "chain num",
+    "chain_count",
+    "chain count",
+    "chain_acn",
+    "chain acn",
+    "chain_acs",
+    "chain acs",
+    "chain_qty",
+    "chain qty",
+    "chains",
+    "board_num",
+    "board num",
+    "board_count",
+    "board count",
+    "hashboard_count",
+    "hashboard count",
+    "hash_board_count",
+    "hash board count",
+    "hashboards",
+    "hash boards",
+    "boards",
 ];
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -249,6 +299,8 @@ struct Telemetry {
     hashrate_source: String,
     temperatures_c: Vec<f64>,
     fan_rpm: Vec<u32>,
+    board_count: Option<u32>,
+    fan_count: Option<u32>,
 }
 
 impl Telemetry {
@@ -258,15 +310,32 @@ impl Telemetry {
             self.hashrate_source = other.hashrate_source;
         }
         for value in other.temperatures_c {
-            push_unique_f64(&mut self.temperatures_c, value, 0.25, 16);
+            push_unique_f64(&mut self.temperatures_c, value, 0.25, MAX_TELEMETRY_VALUES);
         }
         for value in other.fan_rpm {
-            push_unique_u32(&mut self.fan_rpm, value, 16);
+            push_unique_u32(&mut self.fan_rpm, value, MAX_TELEMETRY_VALUES);
         }
+        self.board_count = max_optional_count(self.board_count, other.board_count, MAX_BOARD_COUNT);
+        self.fan_count = max_optional_count(self.fan_count, other.fan_count, MAX_FAN_COUNT);
+        self.refresh_derived_counts();
     }
 
     fn has_any(&self) -> bool {
-        self.hashrate_ths.is_some() || !self.temperatures_c.is_empty() || !self.fan_rpm.is_empty()
+        self.hashrate_ths.is_some()
+            || !self.temperatures_c.is_empty()
+            || !self.fan_rpm.is_empty()
+            || self.board_count.is_some()
+            || self.fan_count.is_some()
+    }
+
+    fn refresh_derived_counts(&mut self) {
+        if !self.fan_rpm.is_empty() {
+            self.fan_count = max_optional_count(
+                self.fan_count,
+                Some(self.fan_rpm.len() as u32),
+                MAX_FAN_COUNT,
+            );
+        }
     }
 }
 
@@ -1079,7 +1148,7 @@ fn watch_signature(results: &[HostResult]) -> String {
     for item in results {
         let _ = writeln!(
             signature,
-            "{}|{}|{}|{}|{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}|{}|{}|{}|{}",
             item.ip,
             item.confidence.as_str(),
             item.score,
@@ -1087,6 +1156,8 @@ fn watch_signature(results: &[HostResult]) -> String {
             item.model,
             format_hashrate(&item.telemetry),
             format_temperatures(&item.telemetry),
+            format_count(item.telemetry.board_count),
+            format_count(item.telemetry.fan_count),
             format_fans(&item.telemetry),
             join_ports(&item.open_ports)
         );
@@ -1296,16 +1367,24 @@ fn extract_telemetry(text: &str) -> Telemetry {
     }
 
     for value in extract_temperatures(text) {
-        push_unique_f64(&mut telemetry.temperatures_c, value, 0.25, 16);
+        push_unique_f64(
+            &mut telemetry.temperatures_c,
+            value,
+            0.25,
+            MAX_TELEMETRY_VALUES,
+        );
     }
     telemetry
         .temperatures_c
         .sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
 
     for value in extract_fans(text) {
-        push_unique_u32(&mut telemetry.fan_rpm, value, 16);
+        push_unique_u32(&mut telemetry.fan_rpm, value, MAX_TELEMETRY_VALUES);
     }
     telemetry.fan_rpm.sort_unstable();
+    telemetry.fan_count = extract_fan_count(text, telemetry.fan_rpm.len());
+    telemetry.board_count = extract_board_count(text);
+    telemetry.refresh_derived_counts();
 
     telemetry
 }
@@ -1345,7 +1424,7 @@ fn extract_temperatures(text: &str) -> Vec<f64> {
     for label in TEMPERATURE_LABELS {
         for value in values_after_label(text, label, 80) {
             if (10.0..=125.0).contains(&value) {
-                push_unique_f64(&mut values, value, 0.25, 16);
+                push_unique_f64(&mut values, value, 0.25, MAX_TELEMETRY_VALUES);
             }
         }
     }
@@ -1355,19 +1434,103 @@ fn extract_temperatures(text: &str) -> Vec<f64> {
 fn extract_fans(text: &str) -> Vec<u32> {
     let mut values = Vec::new();
     for label in FAN_LABELS {
+        collect_fan_rpm_after_label(text, label, &mut values);
+    }
+    for index in 0..=MAX_FAN_COUNT {
+        for label in [
+            format!("fan_{}", index),
+            format!("fan {}", index),
+            format!("fan-{}", index),
+        ] {
+            collect_fan_rpm_after_label(text, &label, &mut values);
+        }
+    }
+    values
+}
+
+fn collect_fan_rpm_after_label(text: &str, label: &str, values: &mut Vec<u32>) {
+    for value in values_after_label(text, label, 80) {
+        if value.fract().abs() > 0.001 {
+            continue;
+        }
+        if label == "fan" && value < 100.0 {
+            continue;
+        }
+        if (0.0..=25_000.0).contains(&value) {
+            push_unique_u32(values, value.round() as u32, MAX_TELEMETRY_VALUES);
+        }
+    }
+}
+
+fn extract_fan_count(text: &str, fan_rpm_len: usize) -> Option<u32> {
+    let mut count = bounded_count(fan_rpm_len as u32, MAX_FAN_COUNT);
+    count = max_optional_count(
+        count,
+        extract_count_from_labels(text, FAN_COUNT_LABELS, MAX_FAN_COUNT),
+        MAX_FAN_COUNT,
+    );
+
+    let indexed_count = count_indexed_labels(text, "fan", 0, MAX_FAN_COUNT);
+    max_optional_count(
+        count,
+        bounded_count(indexed_count, MAX_FAN_COUNT),
+        MAX_FAN_COUNT,
+    )
+}
+
+fn extract_board_count(text: &str) -> Option<u32> {
+    let mut count = extract_count_from_labels(text, BOARD_COUNT_LABELS, MAX_BOARD_COUNT);
+    for prefix in ["chain", "board", "hashboard", "hash_board"] {
+        let indexed_count = count_indexed_labels(text, prefix, 0, MAX_BOARD_COUNT);
+        count = max_optional_count(
+            count,
+            bounded_count(indexed_count, MAX_BOARD_COUNT),
+            MAX_BOARD_COUNT,
+        );
+    }
+    count
+}
+
+fn extract_count_from_labels(text: &str, labels: &[&str], max_count: u32) -> Option<u32> {
+    let mut count = None;
+    for label in labels {
         for value in values_after_label(text, label, 80) {
             if value.fract().abs() > 0.001 {
                 continue;
             }
-            if *label == "fan" && value < 100.0 {
-                continue;
-            }
-            if (0.0..=25_000.0).contains(&value) {
-                push_unique_u32(&mut values, value.round() as u32, 16);
-            }
+            count = max_optional_count(
+                count,
+                bounded_count(value.round() as u32, max_count),
+                max_count,
+            );
         }
     }
-    values
+    count
+}
+
+fn count_indexed_labels(text: &str, prefix: &str, first: u32, last: u32) -> u32 {
+    let lowered = text.to_ascii_lowercase();
+    let mut seen = HashSet::new();
+    for index in first..=last {
+        if indexed_label_present(&lowered, prefix, index) {
+            seen.insert(index);
+        }
+    }
+    seen.len() as u32
+}
+
+fn indexed_label_present(lowered: &str, prefix: &str, index: u32) -> bool {
+    for candidate in [
+        format!("{}{}", prefix, index),
+        format!("{}_{}", prefix, index),
+        format!("{} {}", prefix, index),
+        format!("{}-{}", prefix, index),
+    ] {
+        if contains_labeled_token(lowered, &candidate) {
+            return true;
+        }
+    }
+    false
 }
 
 fn values_after_label(text: &str, label: &str, window_len: usize) -> Vec<f64> {
@@ -1379,6 +1542,13 @@ fn values_after_label(text: &str, label: &str, window_len: usize) -> Vec<f64> {
     while let Some(relative) = lowered[offset..].find(&label) {
         let label_start = offset + relative;
         let value_start = label_start + label.len();
+        if !is_label_match(&lowered, label_start, value_start) {
+            offset = value_start;
+            if offset >= lowered.len() {
+                break;
+            }
+            continue;
+        }
         let value_end = (value_start + window_len).min(text.len());
         if let Some(window) = text.get(value_start..value_end) {
             if let Some(value) = first_number(window) {
@@ -1392,6 +1562,52 @@ fn values_after_label(text: &str, label: &str, window_len: usize) -> Vec<f64> {
     }
 
     values
+}
+
+fn contains_labeled_token(text: &str, token: &str) -> bool {
+    let mut offset = 0;
+    while let Some(relative) = text[offset..].find(token) {
+        let start = offset + relative;
+        let end = start + token.len();
+        if is_label_match(text, start, end) {
+            return true;
+        }
+        offset = end;
+        if offset >= text.len() {
+            break;
+        }
+    }
+    false
+}
+
+fn is_label_match(text: &str, start: usize, end: usize) -> bool {
+    label_boundary_before(text, start) && label_boundary_after(text, end)
+}
+
+fn label_boundary_before(text: &str, start: usize) -> bool {
+    if start == 0 {
+        return true;
+    }
+    text[..start]
+        .chars()
+        .next_back()
+        .map(label_boundary_char)
+        .unwrap_or(true)
+}
+
+fn label_boundary_after(text: &str, end: usize) -> bool {
+    if end >= text.len() {
+        return true;
+    }
+    text[end..]
+        .chars()
+        .next()
+        .map(label_boundary_char)
+        .unwrap_or(true)
+}
+
+fn label_boundary_char(ch: char) -> bool {
+    !ch.is_ascii_alphanumeric() && ch != '_'
 }
 
 fn first_number(text: &str) -> Option<f64> {
@@ -1438,6 +1654,23 @@ fn push_unique_u32(values: &mut Vec<u32>, value: u32, limit: usize) {
     }
     if values.len() < limit {
         values.push(value);
+    }
+}
+
+fn bounded_count(value: u32, max_count: u32) -> Option<u32> {
+    if (1..=max_count).contains(&value) {
+        Some(value)
+    } else {
+        None
+    }
+}
+
+fn max_optional_count(left: Option<u32>, right: Option<u32>, max_count: u32) -> Option<u32> {
+    match (left, right) {
+        (Some(left), Some(right)) => bounded_count(left.max(right).min(max_count), max_count),
+        (Some(left), None) => bounded_count(left.min(max_count), max_count),
+        (None, Some(right)) => bounded_count(right.min(max_count), max_count),
+        (None, None) => None,
     }
 }
 
@@ -1762,6 +1995,12 @@ fn format_fans(telemetry: &Telemetry) -> String {
         .join(",")
 }
 
+fn format_count(value: Option<u32>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "-".to_string())
+}
+
 fn print_results(results: &[HostResult]) {
     if results.is_empty() {
         println!("No ASIC miner candidates found.");
@@ -1775,6 +2014,8 @@ fn print_results(results: &[HostResult]) {
         "VENDOR / MODEL",
         "HASHRATE",
         "TEMP C",
+        "BOARDS",
+        "FANS",
         "FAN RPM",
         "PORTS",
         "REASON",
@@ -1797,6 +2038,8 @@ fn print_results(results: &[HostResult]) {
             name,
             format_hashrate(&item.telemetry),
             format_temperatures(&item.telemetry),
+            format_count(item.telemetry.board_count),
+            format_count(item.telemetry.fan_count),
             format_fans(&item.telemetry),
             join_ports(&item.open_ports),
             item.reasons
@@ -1815,9 +2058,10 @@ fn print_results(results: &[HostResult]) {
     for row in &rows {
         for (index, value) in row.iter().enumerate() {
             let cap = match index {
-                8 => 56,
+                10 => 56,
                 3 => 26,
-                4 | 5 | 6 => 18,
+                4 | 5 | 8 => 18,
+                6 | 7 => 8,
                 _ => 28,
             };
             widths[index] = widths[index].max(value.len()).min(cap);
@@ -1951,10 +2195,12 @@ fn build_json_report(
         );
         let _ = writeln!(
             out,
-            "      \"telemetry\": {{\"hashrate_ths\": {}, \"hashrate_source\": \"{}\", \"temperatures_c\": {}, \"fan_rpm\": {}}},",
+            "      \"telemetry\": {{\"hashrate_ths\": {}, \"hashrate_source\": \"{}\", \"temperatures_c\": {}, \"board_count\": {}, \"fan_count\": {}, \"fan_rpm\": {}}},",
             json_optional_f64(item.telemetry.hashrate_ths),
             json_escape(&item.telemetry.hashrate_source),
             json_f64_array(&item.telemetry.temperatures_c),
+            json_optional_u32(item.telemetry.board_count),
+            json_optional_u32(item.telemetry.fan_count),
             json_u32_array(&item.telemetry.fan_rpm)
         );
         let _ = writeln!(
@@ -1976,7 +2222,7 @@ fn build_json_report(
 
 fn build_csv_report(results: &[HostResult]) -> String {
     let mut out = String::from(
-        "ip,confidence,score,vendor,model,hashrate_ths,temperatures_c,fan_rpm,open_ports,reasons\n",
+        "ip,confidence,score,vendor,model,hashrate_ths,temperatures_c,board_count,fan_count,fan_rpm,open_ports,reasons\n",
     );
     for item in results {
         let row = [
@@ -1995,6 +2241,14 @@ fn build_csv_report(results: &[HostResult]) -> String {
                 .map(|value| format!("{:.1}", value))
                 .collect::<Vec<_>>()
                 .join("|"),
+            item.telemetry
+                .board_count
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
+            item.telemetry
+                .fan_count
+                .map(|value| value.to_string())
+                .unwrap_or_default(),
             item.telemetry
                 .fan_rpm
                 .iter()
@@ -2050,7 +2304,7 @@ fn save_database(
 
 fn build_database_line(item: &HostResult, seen_epoch: u64) -> String {
     format!(
-        "{{\"seen_epoch\":{},\"ip\":\"{}\",\"confidence\":\"{}\",\"score\":{},\"vendor\":\"{}\",\"model\":\"{}\",\"hashrate_ths\":{},\"hashrate_source\":\"{}\",\"temperatures_c\":{},\"fan_rpm\":{},\"open_ports\":[{}],\"reasons\":{}}}",
+        "{{\"seen_epoch\":{},\"ip\":\"{}\",\"confidence\":\"{}\",\"score\":{},\"vendor\":\"{}\",\"model\":\"{}\",\"hashrate_ths\":{},\"hashrate_source\":\"{}\",\"temperatures_c\":{},\"board_count\":{},\"fan_count\":{},\"fan_rpm\":{},\"open_ports\":[{}],\"reasons\":{}}}",
         seen_epoch,
         item.ip,
         item.confidence.as_str(),
@@ -2060,6 +2314,8 @@ fn build_database_line(item: &HostResult, seen_epoch: u64) -> String {
         json_optional_f64(item.telemetry.hashrate_ths),
         json_escape(&item.telemetry.hashrate_source),
         json_f64_array(&item.telemetry.temperatures_c),
+        json_optional_u32(item.telemetry.board_count),
+        json_optional_u32(item.telemetry.fan_count),
         json_u32_array(&item.telemetry.fan_rpm),
         join_ports(&item.open_ports),
         json_string_array(&item.reasons)
@@ -2071,6 +2327,12 @@ fn json_optional_f64(value: Option<f64>) -> String {
         Some(value) if value.is_finite() => format!("{:.3}", value),
         _ => "null".to_string(),
     }
+}
+
+fn json_optional_u32(value: Option<u32>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "null".to_string())
 }
 
 fn json_f64_array(values: &[f64]) -> String {

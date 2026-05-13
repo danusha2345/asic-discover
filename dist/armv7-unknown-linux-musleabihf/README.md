@@ -13,7 +13,7 @@ It does not change miner settings and does not brute-force passwords. The scanne
 - Finds ASIC miner candidates on local IPv4 networks.
 - Supports common ASIC fingerprints: Antminer, WhatsMiner, Avalon, Goldshell, IceRiver, Braiins OS, VNish, Hiveon ASIC, Innosilicon, Jasminer, DragonMint, Baikal, iBeLink, StrongU, Ebang Ebit, Dayun, BlackMiner.
 - Reads CGMiner/BMMiner/BOSMiner API data from ports `4028` and `4029`.
-- Extracts telemetry when available: hashrate, temperatures, and fan RPM.
+- Extracts telemetry when available: hashrate, temperatures, hashboard/chain count, fan count, and up to 16 fan RPM values.
 - Provides watch mode with a static table that redraws only when something changes.
 - Includes ready-to-run binaries for Windows and Linux x64/ARM targets.
 - Builds without external Rust crate dependencies.
@@ -151,17 +151,17 @@ For unstable Wi-Fi, routed networks, or slow devices, keep a safer timeout:
 Example table:
 
 ```text
-IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C            FAN RPM    PORTS      REASON
-------------  ------  -----  -------------------------  ----------  ----------------  ---------  ---------  --------------------------------------------
-192.168.1.41  high    100    Bitmain Antminer S19       104.5 TH/s  max 72; 68,70,72  6150,6200  80,4028   CGMiner-compatible API answered
-192.168.1.42  high    100    Bitmain Antminer S21       188.2 TH/s  max 69; 64,66,69  5520,5590  80,4028   vendor fingerprint: Bitmain Antminer
-192.168.1.43  high    96     MicroBT WhatsMiner M50     118.7 TH/s  max 76; 72,76     5750,5800  80,4028   vendor fingerprint: MicroBT WhatsMiner
-192.168.1.44  high    91     Canaan Avalon A1366        129.4 TH/s  max 71; 66,69,71  5000,5100  80,4028   mining terms: hashrate, fan, pool
-192.168.1.45  high    88     Goldshell KD6              26.3 TH/s   max 64; 60,64     4320,4400  80,8080   HTTP fingerprint on 80/
-192.168.1.46  high    84     IceRiver KS3M              6.1 TH/s    max 67; 63,67     3900,4020  80,4028   CGMiner-compatible API answered
-192.168.1.47  medium  68     Braiins OS                 96.8 TH/s   max 70; 65,70     6100,6180  80,4028   vendor fingerprint: Braiins OS
-192.168.1.48  medium  61     VNish                      82.4 TH/s   max 73; 69,73     5950,6010  80,4028   authenticated miner web UI
-192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3200,3300  80,8080   HTTP fingerprint on 8080/
+IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C            BOARDS  FANS  FAN RPM          PORTS      REASON
+------------  ------  -----  -------------------------  ----------  ----------------  ------  ----  ---------------  ---------  --------------------------------------------
+192.168.1.41  high    100    Bitmain Antminer S19       104.5 TH/s  max 72; 68,70,72  3       4     6150,6200,6180   80,4028   CGMiner-compatible API answered
+192.168.1.42  high    100    Bitmain Antminer S21       188.2 TH/s  max 69; 64,66,69  4       8     5520,5590,5610   80,4028   vendor fingerprint: Bitmain Antminer
+192.168.1.43  high    96     MicroBT WhatsMiner M50     118.7 TH/s  max 76; 72,76     3       2     5750,5800        80,4028   vendor fingerprint: MicroBT WhatsMiner
+192.168.1.44  high    91     Canaan Avalon A1366        129.4 TH/s  max 71; 66,69,71  3       4     5000,5100,5060   80,4028   mining terms: hashrate, fan, pool
+192.168.1.45  high    88     Goldshell KD6              26.3 TH/s   max 64; 60,64     3       2     4320,4400        80,8080   HTTP fingerprint on 80/
+192.168.1.46  high    84     IceRiver KS3M              6.1 TH/s    max 67; 63,67     4       4     3900,4020,3980   80,4028   CGMiner-compatible API answered
+192.168.1.47  medium  68     Braiins OS                 96.8 TH/s   max 70; 65,70     3       4     6100,6180,6120   80,4028   vendor fingerprint: Braiins OS
+192.168.1.48  medium  61     VNish                      82.4 TH/s   max 73; 69,73     3       4     5950,6010,5990   80,4028   authenticated miner web UI
+192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3       4     3200,3300,3260   80,8080   HTTP fingerprint on 8080/
 ```
 
 ### Inventory Database
@@ -178,7 +178,9 @@ This is an append-only JSONL database: one JSON line per discovered device per c
 database/latest_inventory.csv
 ```
 
-Records include IP, vendor, model, confidence, open ports, hashrate, temperatures, fan RPM, and detection reasons.
+Records include IP, vendor, model, confidence, open ports, hashrate, temperatures, board count, fan count, fan RPM, and detection reasons.
+
+The telemetry parser keeps up to 16 fan RPM values and detects up to 16 hashboards/chains.
 
 ### Build For Multiple Systems
 
@@ -238,7 +240,7 @@ ASIC Discover - кроссплатформенная Rust-утилита для 
 - Поиск ASIC-кандидатов в локальных IPv4-сетях.
 - Сигнатуры популярных ASIC: Antminer, WhatsMiner, Avalon, Goldshell, IceRiver, Braiins OS, VNish, Hiveon ASIC, Innosilicon, Jasminer, DragonMint, Baikal, iBeLink, StrongU, Ebang Ebit, Dayun, BlackMiner.
 - Чтение CGMiner/BMMiner/BOSMiner API на портах `4028` и `4029`.
-- Извлечение телеметрии, если устройство её отдаёт: хэшрейт, температуры, обороты вентиляторов.
+- Извлечение телеметрии, если устройство её отдаёт: хэшрейт, температуры, количество плат/цепочек, количество вентиляторов и до 16 значений RPM вентиляторов.
 - Watch-режим со статичной таблицей, которая перерисовывается только при изменениях.
 - Готовые бинарники для Windows и Linux x64/ARM.
 - Сборка без внешних Rust crate-зависимостей.
@@ -376,17 +378,17 @@ HTTP Basic Auth для веб-интерфейсов майнеров:
 Пример таблицы:
 
 ```text
-IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C            FAN RPM    PORTS      REASON
-------------  ------  -----  -------------------------  ----------  ----------------  ---------  ---------  --------------------------------------------
-192.168.1.41  high    100    Bitmain Antminer S19       104.5 TH/s  max 72; 68,70,72  6150,6200  80,4028   CGMiner-compatible API answered
-192.168.1.42  high    100    Bitmain Antminer S21       188.2 TH/s  max 69; 64,66,69  5520,5590  80,4028   vendor fingerprint: Bitmain Antminer
-192.168.1.43  high    96     MicroBT WhatsMiner M50     118.7 TH/s  max 76; 72,76     5750,5800  80,4028   vendor fingerprint: MicroBT WhatsMiner
-192.168.1.44  high    91     Canaan Avalon A1366        129.4 TH/s  max 71; 66,69,71  5000,5100  80,4028   mining terms: hashrate, fan, pool
-192.168.1.45  high    88     Goldshell KD6              26.3 TH/s   max 64; 60,64     4320,4400  80,8080   HTTP fingerprint on 80/
-192.168.1.46  high    84     IceRiver KS3M              6.1 TH/s    max 67; 63,67     3900,4020  80,4028   CGMiner-compatible API answered
-192.168.1.47  medium  68     Braiins OS                 96.8 TH/s   max 70; 65,70     6100,6180  80,4028   vendor fingerprint: Braiins OS
-192.168.1.48  medium  61     VNish                      82.4 TH/s   max 73; 69,73     5950,6010  80,4028   authenticated miner web UI
-192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3200,3300  80,8080   HTTP fingerprint on 8080/
+IP            CONF    SCORE  VENDOR / MODEL             HASHRATE    TEMP C            BOARDS  FANS  FAN RPM          PORTS      REASON
+------------  ------  -----  -------------------------  ----------  ----------------  ------  ----  ---------------  ---------  --------------------------------------------
+192.168.1.41  high    100    Bitmain Antminer S19       104.5 TH/s  max 72; 68,70,72  3       4     6150,6200,6180   80,4028   CGMiner-compatible API answered
+192.168.1.42  high    100    Bitmain Antminer S21       188.2 TH/s  max 69; 64,66,69  4       8     5520,5590,5610   80,4028   vendor fingerprint: Bitmain Antminer
+192.168.1.43  high    96     MicroBT WhatsMiner M50     118.7 TH/s  max 76; 72,76     3       2     5750,5800        80,4028   vendor fingerprint: MicroBT WhatsMiner
+192.168.1.44  high    91     Canaan Avalon A1366        129.4 TH/s  max 71; 66,69,71  3       4     5000,5100,5060   80,4028   mining terms: hashrate, fan, pool
+192.168.1.45  high    88     Goldshell KD6              26.3 TH/s   max 64; 60,64     3       2     4320,4400        80,8080   HTTP fingerprint on 80/
+192.168.1.46  high    84     IceRiver KS3M              6.1 TH/s    max 67; 63,67     4       4     3900,4020,3980   80,4028   CGMiner-compatible API answered
+192.168.1.47  medium  68     Braiins OS                 96.8 TH/s   max 70; 65,70     3       4     6100,6180,6120   80,4028   vendor fingerprint: Braiins OS
+192.168.1.48  medium  61     VNish                      82.4 TH/s   max 73; 69,73     3       4     5950,6010,5990   80,4028   authenticated miner web UI
+192.168.1.49  medium  57     Innosilicon A11            1.5 TH/s    max 62; 59,62     3       4     3200,3300,3260   80,8080   HTTP fingerprint on 8080/
 ```
 
 ### База
@@ -403,7 +405,9 @@ database/asic_inventory.jsonl
 database/latest_inventory.csv
 ```
 
-Записи содержат IP, производителя, модель, уровень уверенности, открытые порты, хэшрейт, температуры, вентиляторы и причины определения.
+Записи содержат IP, производителя, модель, уровень уверенности, открытые порты, хэшрейт, температуры, количество плат, количество вентиляторов, RPM вентиляторов и причины определения.
+
+Парсер телеметрии хранит до 16 значений RPM вентиляторов и определяет до 16 хэш-плат/цепочек.
 
 ### Сборка Под Разные Системы
 
